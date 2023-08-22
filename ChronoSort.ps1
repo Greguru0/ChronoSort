@@ -242,12 +242,15 @@ Function Import-Source-Files {
     $currentProgress = 0
     $duplicate_Import_Log = ""
     $match = $False
+	if ($destinationHashDictionary -eq $null) {
+    $destinationHashDictionary = @{}  # Define an empty hash table
+}
 
     Write-Host "`n`nStarting Import Process . . ."
     Start-Sleep -Seconds 3
 
     foreach ($file in $sourceFiles) {
-        $sourceHash = Get-Hash -FilePath $($file.FullName)  # Replace with your hash calculation function
+        if ($destinationHashDictionary -ne $null) {$sourceHash = Get-Hash -FilePath $($file.FullName)}  # Replace with your hash calculation function
 		$match = $False
 		$percentComplete = ($currentProgress / $totalFiles) * 100
 		$progressStatus = "Importing $currentProgress of $totalFiles.         $total_duplicate_count Duplicates Found."
@@ -255,16 +258,17 @@ Function Import-Source-Files {
 		$currentProgress++
 
         # Check if the sourceHash exists in the destinationHashDictionary
-        if ($destinationHashDictionary.ContainsKey($sourceHash)) {
-            $duplicate_group_count++
-            $files = $destinationHashDictionary[$sourceHash] -join "`n|___"
-            $dupe_output = "`nGroup: $($duplicate_group_count)`n$($destinationHashDictionary[$sourceHash].Count) total.`n$($file.FullName) [$sourceHash]`n|___$files"
-            $duplicate_Import_Log += $dupe_output
-            $total_duplicate_count += $($destinationHashDictionary[$sourceHash].Count)
+		if ($sourceHash -ne $null -and $destinationHashDictionary.ContainsKey($sourceHash)) {
+			$duplicate_group_count++
+			$files = $destinationHashDictionary[$sourceHash] -join "`n|___"
+			$dupe_output = "`nGroup: $($duplicate_group_count)`n$($destinationHashDictionary[$sourceHash].Count) total.`n$($file.FullName) [$sourceHash]`n|___$files"
+			$duplicate_Import_Log += $dupe_output
+			$total_duplicate_count += $($destinationHashDictionary[$sourceHash].Count)
+		
+			$match = $True
+			continue  # Exit the loop once you've found a match
+		}
 
-            $match = $True
-            continue  # Exit the loop once you've found a match
-        }
 
         if (-not $match) {
             $outputname, $outputPath = Rename-File -sourceFilePath $file.FullName -destinationPath $destination
@@ -399,7 +403,7 @@ Function Output-Log {
 	# Output Log
 	Write-Host "Finished at $(Get-Date)"
     $output = "***********SUMMARY************`n"
-    $output += "Is there a zero here? $global:startTime"
+    $output += "$global:startTime"
 	$output += "Process finished: $(Get-Date)`n"
     $output += "Successfully imported: $($successful) of $($sourceTotal) total files.`n`n"
 	$output += "Imported into the following directories: "
