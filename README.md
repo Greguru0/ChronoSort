@@ -2,13 +2,12 @@
 A PowerShell script for file organization. Arrange files from a source directory into a destination folder based on their creation date. Handle duplicates using MD5 hashing comparison. Destined filenames will follow ISO 8601 format with unique identifiers in case of same names.
 
 Features:
-
 Import and organize files (intended for photos and videos) from a source directory to a destination directory.
 Choose specific file types for the import process.
 Prevent overwriting of existing files with the same name using hash value comparison.
 Generate filenames following the ISO 8601 date format with unique identifiers to avoid conflicts.
-Usage:
 
+Usage:
 Run the script in a PowerShell environment.
 The script will prompt you to select the source folder containing the files to be imported.
 Next, choose the destination folder where the organized files will be placed.
