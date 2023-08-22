@@ -1,12 +1,12 @@
 # I think a rebrand is due. Thanks ChatGPT:
-# ChronoSort: Time-Sorted Shit
+# ChronoSort: Time-Sorted Shit v1.0
+# Picscrape v3.0 > FileScrape 2.0 > ChronoSort: Time-Sorted Shit v1.0
 
-
-# File_Scrape v2.0
+# FileScrape v2.0
 # 08/21/2023
 
 # Changelog:
-# Forked Picscrape > Filescrape
+# Forked Picscrape v3.0 > FileScrape 2.0
 # Updated 08/21/2023
 # Changelog v2.0
 # Entirely rewritten. Mostly everything is modularized into functions. The output log is much cleaner. There is an error log now.
@@ -44,7 +44,7 @@ if (-Not (Get-ExecutionPolicy -Scope Process) -eq 'Bypass') {
 $oReturn = [System.Windows.Forms.Messagebox]::Show(@"
 ChronoSort`n`nThis script is designed to scrape or import files (primarily pictures) from a source directory and organize them into a destination directory based on the date the pictures were taken. `n`nIt allows the user to specify file types to include in the import. `nIt aims to handle duplicate files by checking their hash values (MD5) and will avoid overwriting files with the same name. `n`n It will generate filenames that follow the ISO 8601 date format and include a unique identifier (e.g., "(1)", "(2)", etc.) and a letter, if necessary to reduce any filename conflicts.`n`nLatest Release: 08-21-2023`n-G
 "@
-, "Filescrape", 0, 64)
+, "ChronoSort", 0, 64)
 
 ################### Dbug Code:
 
@@ -78,8 +78,8 @@ Function Initialize-Variables {
 }
 
 Function Initialize-Files {
-$errorLog = "$pwd\FileScrape_ERROR-LOG.txt"
-$importLog = "$pwd\FileScrape_Log.txt"
+$errorLog = "$pwd\ChronoSort_ERROR-LOG.txt"
+$importLog = "$pwd\ChronoSort_Log.txt"
 
     if (!(Test-Path $importLog)) {
         New-Item $importLog > $null
@@ -176,7 +176,7 @@ function Search-SourceFiles {
 		$oReturn = [System.Windows.Forms.Messagebox]::Show(@"
 	There are no files in $source. Exiting.
 "@
-, "Filescrape", 0, 64)
+, "ChronoSort", 0, 64)
 	exit
 	}
 
