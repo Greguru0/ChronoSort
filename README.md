@@ -1,5 +1,5 @@
 # ChronoSort
-A PowerShell script for file organization. Arrange files from a source directory into a destination folder based on their creation date. Handle duplicates using MD5 hashing comparison. Destined filenames will follow ISO 8601 format with unique identifiers in case of same names.
+A PowerShell script for file organization. Arrange files from a source directory into a destination folder based on their creation date. Handle duplicates using MD5 hashing comparison. Destined filenames will follow ISO 8601 format with unique identifiers in the event of duplicate names.
 
 &nbsp;&nbsp;&nbsp;&nbsp;
 
