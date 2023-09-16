@@ -355,10 +355,18 @@ function Rename-File {
     $month = $dateTime.Month
     $day = $dateTime.Day
     $monthAlpha = Get-Culture | ForEach-Object { $_.DateTimeFormat.GetMonthName($month) }
-    $outputPath = Join-Path -Path $destinationPath -ChildPath "$year"
-	# UNCOMMENT FOR SORTING INTO MONTH FOLDER $outputPath = Join-Path -Path $destinationPath -ChildPath "$year\$monthAlpha"
-	# UNCOMMENT FOR SORTING INTO DAY $outputPath = Join-Path -Path $destinationPath -ChildPath "$year\$monthAlpha\$day"
-    $extension = (Get-Item $sourceFilePath).Extension.TrimStart('.')
+	
+	# Currently, this will sort into a Year-Month type of organization.
+	# Change for your needs.
+    $outputPath = Join-Path -Path $destinationPath -ChildPath "$year-$month"
+	
+	# UNCOMMENT FOR SORTING INTO MONTH FOLDER
+	# $outputPath = Join-Path -Path $destinationPath -ChildPath "$year\$monthAlpha"
+	
+	# UNCOMMENT FOR SORTING INTO DAY 
+	# $outputPath = Join-Path -Path $destinationPath -ChildPath "$year\$monthAlpha\$day"
+    
+	$extension = (Get-Item $sourceFilePath).Extension.TrimStart('.')
 	$outputname = "$year-$month-$day.$extension"
     return $outputName, $outputPath
 }
