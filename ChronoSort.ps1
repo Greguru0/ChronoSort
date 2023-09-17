@@ -33,6 +33,7 @@
 # Set error handling preference
 set-psdebug -trace 0
 $ErrorActionPreference = "Continue"
+$memoryBefore = [System.GC]::GetTotalMemory($true)
 
 # Bypass Execution Policy if not already set
 if (-Not (Get-ExecutionPolicy -Scope Process) -eq 'Bypass') {
@@ -65,6 +66,9 @@ function High-Light-Message {
 ######################
 
 Function Initialize-Variables {
+	$memoryBefore = [System.GC]::GetTotalMemory($true)
+	# Code segment to profile
+	
     [string]$duplicate_Import_Log = ""
     [int]$stepTotal = 0
     [int]$stepNumber = 0
@@ -74,21 +78,31 @@ Function Initialize-Variables {
     [hashtable]$folderFileCounts = @{}
     [string]$global:startTime = "`nProcess started: $(Get-Date)`n"
     Write-Host $startTime
-    return $stepTotal, $stepNumber, $startTime, $successful, $total_duplicate_count, $duplicate_group_count, $folderFileCounts
+    $memoryAfter = [System.GC]::GetTotalMemory($true)
+	$memoryUsed = $memoryAfter - $memoryBefore
+	Write-Host "Memory used Initialize-Variables: $($memoryUsed / 1MB) MB"
+
+	return $stepTotal, $stepNumber, $startTime, $successful, $total_duplicate_count, $duplicate_group_count, $folderFileCounts
 }
 
 Function Initialize-Files {
+$memoryBefore = [System.GC]::GetTotalMemory($true)
 $errorLog = "$pwd\ChronoSort_ERROR-LOG.txt"
 $importLog = "$pwd\ChronoSort_Log.txt"
 
     if (!(Test-Path $importLog)) {
         New-Item $importLog > $null
     }
+	
+	$memoryAfter = [System.GC]::GetTotalMemory($true)
+	$memoryUsed = $memoryAfter - $memoryBefore
+	Write-Host "Memory used Initialize-Files: $($memoryUsed / 1MB) MB"
 
 return $importLog, $errorLog
 }
 
 Function Set-SourceDialog {
+	$memoryBefore = [System.GC]::GetTotalMemory($true)
 	Write-Host "`nSelect a Source Folder."
     [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
     $objForm = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -99,6 +113,9 @@ Function Set-SourceDialog {
     If ($Show -eq "OK") {
         $source = $objForm.SelectedPath
         Write-Host "Source set to: $source"
+			$memoryAfter = [System.GC]::GetTotalMemory($true)
+	$memoryUsed = $memoryAfter - $memoryBefore
+	Write-Host "Memory used Set-Source: $($memoryUsed / 1MB) MB"
 		return $source
     }
     Else {
@@ -110,9 +127,11 @@ Function Set-SourceDialog {
 # USAGE
 $source = Set-SourceDialog
 Write-Host Source set to: $source
+
 }
 
 Function Set-DestinationDialog {
+		$memoryBefore = [System.GC]::GetTotalMemory($true)
 	Write-Host "`nSelect a Destination Folder."
     [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
     $objForm = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -123,6 +142,9 @@ Function Set-DestinationDialog {
     If ($Show -eq "OK") {
         $destination = $objForm.SelectedPath
         Write-Host "Destination set to: $destination"
+			$memoryAfter = [System.GC]::GetTotalMemory($true)
+	$memoryUsed = $memoryAfter - $memoryBefore
+	Write-Host "Memory used Set-Destination: $($memoryUsed / 1MB) MB"
 		return $destination
     }
     Else {
@@ -134,13 +156,19 @@ Function Set-DestinationDialog {
 # USAGE
 $destination = Set-Destination-Dialog
 Write-Host Destination set to: $destination
+
+
 }
 
 function Get-UserChoice-FileTypes {
+		$memoryBefore = [System.GC]::GetTotalMemory($true)
 	# Prompts user for Filetypes
 	Write-Host "Please enter which filetypes to use. Delimited by spaces. (e.g., jpg jpeg nef mp4 mp3 txt avi): "
 	$userinput = (Read-Host).Trim() -split ' ' | Select-Object -Unique
 	write-host $($extensions -join ', ')
+				$memoryAfter = [System.GC]::GetTotalMemory($true)
+	$memoryUsed = $memoryAfter - $memoryBefore
+	Write-Host "Memory used Get-UserChoice-FileTypes: $($memoryUsed / 1MB) MB"
 	return $userinput
 
 # USAGE
@@ -151,7 +179,7 @@ function Search-SourceFiles {
     param (
         [string[]]$extensions
     )
-
+	$memoryBefore = [System.GC]::GetTotalMemory($true)
 	[System.Collections.ArrayList]$sourceFiles = @()
 	Get-ChildItem -Path $source -Recurse -File | Where-Object { $extensions -contains $_.Extension.TrimStart('.') }| % {
 		[void]$sourceFiles.Add($_)
@@ -179,7 +207,9 @@ function Search-SourceFiles {
 , "ChronoSort", 0, 64)
 	exit
 	}
-
+			$memoryAfter = [System.GC]::GetTotalMemory($true)
+	$memoryUsed = $memoryAfter - $memoryBefore
+	Write-Host "Memory used Search-SourceFiles: $($memoryUsed / 1MB) MB"
     return $sourceFiles, $sourceTotal
 }
 
@@ -187,7 +217,7 @@ function Get-DestinationFiles {
     param (
         [string[]]$extensions
     )
-
+	$memoryBefore = [System.GC]::GetTotalMemory($true)
 		[System.Collections.ArrayList]$destinationFiles = @()
 	Get-ChildItem -Path $destination -Recurse -File | Where-Object { $extensions -contains $_.Extension.TrimStart('.') }| % {
 		[void]$destinationFiles.Add($_)
@@ -207,7 +237,9 @@ function Get-DestinationFiles {
     }
     Write-Host "$destinationTotal Total Files in $destination"
     Write-Host " "
-
+			$memoryAfter = [System.GC]::GetTotalMemory($true)
+	$memoryUsed = $memoryAfter - $memoryBefore
+	Write-Host "Memory used Get-DestinationFiles: $($memoryUsed / 1MB) MB"
     return $destinationFiles
 }
 
@@ -250,7 +282,15 @@ Function Import-Source-Files {
     Start-Sleep -Seconds 3
 
     foreach ($file in $sourceFiles) {
-        if ($destinationHashDictionary -ne $null) {$sourceHash = Get-Hash -FilePath $($file.FullName)}  # Replace with your hash calculation function
+		$memoryBefore = [System.GC]::GetTotalMemory($true)
+		Write-Host "Importing $file . . ."
+		Write-Host "$($destinationHashDictionary.Count)"
+        #if ($destinationHashDictionary -ne $null) {$sourceHash = Get-Hash -FilePath $($file.FullName)}  # Replace with your hash calculation function
+		if ($destinationHashDictionary.Count -ne 0) {
+			# The array is not null and is empty
+			$sourceHash = Get-Hash -FilePath $($file.FullName)
+		}
+		
 		$match = $False
 		$percentComplete = ($currentProgress / $totalFiles) * 100
 		$progressStatus = "Importing $currentProgress of $totalFiles.         $total_duplicate_count Duplicates Found."
@@ -259,21 +299,23 @@ Function Import-Source-Files {
 
         # Check if the sourceHash exists in the destinationHashDictionary
 		if ($sourceHash -ne $null -and $destinationHashDictionary.ContainsKey($sourceHash)) {
+			write-host "Searching for duplicate . . ."
 			$duplicate_group_count++
 			$files = $destinationHashDictionary[$sourceHash] -join "`n|___"
 			$dupe_output = "`nGroup: $($duplicate_group_count)`n$($destinationHashDictionary[$sourceHash].Count) total.`n$($file.FullName) [$sourceHash]`n|___$files"
 			$duplicate_Import_Log += $dupe_output
 			$total_duplicate_count += $($destinationHashDictionary[$sourceHash].Count)
-		
 			$match = $True
 			continue  # Exit the loop once you've found a match
 		}
 
 
         if (-not $match) {
+			Write-Host "Rename Function . . ."
             $outputname, $outputPath = Rename-File -sourceFilePath $file.FullName -destinationPath $destination
 
             if (-not (Test-Path -Path "$outputPath" -PathType Leaf)) {
+				Write-Host "Testing Path . . ."
                 New-Item -Path $outputPath -ItemType Directory 2>$null
             }
 
@@ -286,13 +328,21 @@ Function Import-Source-Files {
 
                 while (Test-Path -Path "$outputPath\$outputName" -PathType Leaf) {
                     $outputName = "${basename}($renameCounter)$extension"
+					Write-Host "Trying $outputName . . ."
                     $renameCounter++
                 }
             }
 
             #Write-Host "Copying $($file.FullName) to $outputPath\$outputName"
-            Copy-Item -Path $file.FullName -Destination "$outputPath\$outputName" -Force
+            Write-Host "Copying . . . $outputPath\$OutputName"
+			#Copy-Item -Path $file.FullName -Destination "$outputPath\$outputName" -Force
+			$outputDestination = "$outputPath\$outputName"
+			[System.IO.File]::Copy($file.FullName, $outputDestination, $true)  # The third parameter specifies whether to overwrite if the file exists
             $successful++
+			Write-Host "COPIED!"
+			$memoryAfter = [System.GC]::GetTotalMemory($true)
+$memoryUsed = $memoryAfter - $memoryBefore
+Write-Host "Memory used Copied: $($memoryUsed / 1MB) MB"
 
             if ($folderFileCounts.ContainsKey($outputPath)) {
                 $folderFileCounts[$outputPath]++
@@ -301,15 +351,17 @@ Function Import-Source-Files {
             }
         }
     }
-
+$memoryBefore = [System.GC]::GetTotalMemory($true)
 	# Had to put the Output-Log function call here. I don't know why. But it works, now. Fuck Powershell.
     Output-Log -importLog $importLog -duplicate_Import_Log $duplicate_Import_Log -duplicate_group_count $duplicate_group_count -folderFileCounts $folderFileCounts -successful $successful -total_duplicate_count $total_duplicate_count -StartTime $startTime
-
+			$memoryAfter = [System.GC]::GetTotalMemory($true)
+$memoryUsed = $memoryAfter - $memoryBefore
+Write-Host "Memory used Logging: $($memoryUsed / 1MB) MB"
 	# Everything breaks when it's returned... WHY!? Fuck Powershell.
 	#return $successful, $duplicate_Import_Log, $duplicate_group_count, $total_duplicate_count, $folderFileCounts
 }
 
-function Get-AllExtendedProperties {
+function Get-ExtendedProperty {
     param (
         [string]$FilePath
     )
@@ -318,16 +370,24 @@ function Get-AllExtendedProperties {
     $Shell = New-Object -COMObject Shell.Application
     $ShellFolder = $Shell.NameSpace($Folder)
     $ShellFile = $ShellFolder.ParseName($File)
-    $allProperties = @{}
-    for ($File = 0; $File -lt 500; $File++) {
-        $propertyName = $ShellFolder.GetDetailsOf($null, $File)
-        if ($propertyName) {
-            $propertyValue = $ShellFolder.GetDetailsOf($ShellFile, $File)
-            $allProperties[$propertyName] = $propertyValue
-        }
+    
+    $mediaCreatedProperty = $ShellFolder.GetDetailsOf($ShellFile, 208)  # "Media Created" property
+    $dateTakenProperty = $ShellFolder.GetDetailsOf($ShellFile, 12)    # "Date Taken" property
+    $dateModifiedProperty = $ShellFolder.GetDetailsOf($ShellFile, 3)    # "Date Modified" property
+    
+    if ($mediaCreatedProperty) {
+        return $mediaCreatedProperty
     }
-
-    return $allProperties
+    elseif ($dateTakenProperty) {
+        return $dateTakenProperty
+    }
+    elseif ($dateModifiedProperty) {
+        return $dateModifiedProperty
+    } else {
+        return "Neither 'Media Created' nor 'Date Taken' nor 'Date Modified' properties are available."
+		pause
+		exit
+    }
 }
 
 function Rename-File {
@@ -335,18 +395,11 @@ function Rename-File {
         [string]$sourceFilePath,
         [string]$destinationPath
     )
-    $allExtendedProperties = Get-AllExtendedProperties -FilePath $sourceFilePath
-	$desiredCreationDate = $allExtendedProperties['Media Created']
-	if (-not $desiredCreationDate -or $desiredCreationDate -eq 'Unknown') {
-		$desiredCreationDate = $allExtendedProperties['Date Taken']
-	}
-	if (-not $desiredCreationDate -or $desiredCreationDate -eq 'Unknown') {
-		$desiredCreationDate = $allExtendedProperties['Date Modified']
-	}
-	$desiredCreationDate = ($desiredCreationDate -split ' ')[0]
-	$desiredCreationDate = $desiredCreationDate -replace '\s+|[^i\p{IsBasicLatin}/]|[^\x20-\x7E/]', ''
+	$mediacreated = Get-ExtendedProperty -FilePath $sourceFilePath
+	$mediacreated = ($mediacreated -split ' ')[0]
+	$mediacreated = $mediacreated -replace '\s+|[^i\p{IsBasicLatin}/]|[^\x20-\x7E/]', ''
     $dateTime = [DateTime]::MinValue
-    [void][DateTime]::TryParse($desiredCreationDate, [ref]$dateTime)
+    [void][DateTime]::TryParse($mediacreated, [ref]$dateTime)
     if ($dateTime -eq [DateTime]::MinValue) {
         $dateTime = [DateTime]::Now
 		Write-Host "Something really weird happened to this file . . . Using today's date"
@@ -372,6 +425,7 @@ function Rename-File {
 }
 
 function Get-Hash($filePath) {
+	Write-Host "Hashing . . ."
     $hashValue = certutil -hashfile $filePath MD5 | Select-Object -Index 1
     return $hashValue
 }
@@ -494,4 +548,10 @@ function I_LOVE_KARENA! {
         exit
     }
 }
+
+$memoryAfter = [System.GC]::GetTotalMemory($true)
+$memoryUsed = $memoryAfter - $memoryBefore
+Write-Host "Memory used: $($memoryUsed / 1MB) MB"
+pause
+
 I_LOVE_KARENA!
