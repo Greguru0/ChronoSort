@@ -44,7 +44,7 @@ if (-Not (Get-ExecutionPolicy -Scope Process) -eq 'Bypass') {
 [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") > $null
 
 $oReturn = [System.Windows.Forms.Messagebox]::Show(@"
-ChronoSort`n`nThis script is designed to scrape or import files (primarily pictures) from a source directory and organize them into a destination directory based on the date the pictures were taken. `n`nIt allows the user to specify file types to include in the import. `nIt aims to handle duplicate files by checking their hash values (MD5) and will avoid overwriting files with the same name. `n`n It will generate filenames that follow the ISO 8601 date format and include a unique identifier (e.g., "(1)", "(2)", etc.) and a letter, if necessary to reduce any filename conflicts.`n`nLatest Release: 08-21-2023`n-G
+ChronoSort`n`nThis script is designed to scrape or import files (primarily pictures) from a source directory and organize them into a destination directory based on the date the pictures were taken. `n`nIt allows the user to specify file types to include in the import. `nIt aims to handle duplicate files by checking their hash values (MD5) and will avoid overwriting files with the same name. `n`n It will generate filenames that follow the ISO 8601 date format and include a unique identifier (e.g., "(1)", "(2)", etc.) and a letter, if necessary to reduce any filename conflicts.`n`nLatest Release: 05-26-2024`n-G
 "@
 , "ChronoSort", 0, 64)
 
