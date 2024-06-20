@@ -1,4 +1,14 @@
-# ChronoSort
+NOTE: This has been updated to a Python version. The Python version is much faster and has a GUI. It's far more sleek and I strongly recommend it for use.
+
+# ChronoSort (Python)
+Pretty much the same deal as below, except that it's far superior.
+
+Ensure you have the following packages installed before running the script:
+Python 3.x
+Tkinter (usually comes with Python standard library)
+Pillow (PIL Fork)
+
+# ChronoSort (Powershell)
 A PowerShell script for file organization. Arrange files from a source directory into a destination folder based on their creation date. Handle duplicates using MD5 hashing comparison. Destined filenames will follow ISO 8601 format with unique identifiers in the event of duplicate names.
 
 &nbsp;&nbsp;&nbsp;&nbsp;
