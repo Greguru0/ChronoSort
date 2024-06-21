@@ -14,13 +14,13 @@ A PowerShell script for file organization. Arrange files from a source directory
 &nbsp;&nbsp;&nbsp;&nbsp;
 
 
-**Features:  **
+**Features:**  
 Import and organize files (intended for photos and videos) from a source directory to a destination directory.  
 Choose specific file types for the import process.  
 Prevent overwriting of existing files with the same name using hash value comparison.  
 Generate filenames following the ISO 8601 date format with unique identifiers to avoid conflicts.  
 
-**Usage:  **
+**Usage:**  
 Run the script in a PowerShell environment.  
 The script will prompt you to select the source folder containing the files to be imported.  
 Next, choose the destination folder where the organized files will be placed.  
@@ -28,5 +28,5 @@ Specify the file types you want to include in the import process.
 Optionally choose to check for duplicate files (slower import) or skip duplicates (faster import).  
 The script will then start the import process, organizing files by their creation dates.  
 
-**Author:  **
+**Author:**  
 -G
