@@ -1,4 +1,4 @@
-NOTE: This has been updated to a Python version. The Python version is much faster and has a GUI. It's far more sleek and I strongly recommend it for use.
+***NOTE: This has been updated to a Python version. The Python version is much faster and has a GUI. It's far more sleek and I strongly recommend it for use.***
 
 # ChronoSort (Python)
 Pretty much the same deal as below, except that it's **far** superior.
