@@ -8,6 +8,7 @@ Pretty much the same deal as below, except that it's **far** superior.
 - Tkinter (usually comes with Python standard library)  
 - Pillow (PIL Fork)  
 
+*No command line needed.*
 
 # ChronoSort (Powershell)
 A PowerShell script for file organization. Arrange files from a source directory into a destination folder based on their creation date. Handle duplicates using MD5 hashing comparison. Destined filenames will follow ISO 8601 format with unique identifiers in the event of duplicate names.
