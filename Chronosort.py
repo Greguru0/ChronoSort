@@ -4,61 +4,51 @@ import os
 import hashlib
 from datetime import datetime
 from PIL import Image, ImageTk
-from PIL.ExifTags import TAGS
-import exifread  # Single library for handling EXIF data from all supported formats
+import exifread
+import shutil  # Used for efficient file copying
 
 
-class ImageSorterGUI:
+class ChronoSortGUI:
     def __init__(self, main):
         self.root = main
         self.root.title("ChronoSort")
+        self.root.resizable(False, False)  # Prevent window resizing
 
-        # Add this in the __init__ method to create radio buttons for folder structure
-        self.folder_structure_frame = ttk.LabelFrame(main, text="Folder Structure")
-        self.folder_structure_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=10, sticky='w')
+        # Initialize variables
+        self.cancel_requested = False
+        self.selected_extensions = []
+        self.hash_map = {}
 
-        # Create a single variable to hold the value for the folder structure
-        self.folder_structure_var = tk.StringVar(value="flat")  # Default to "flat"
+        # Set up the GUI components
+        self.setup_gui()
 
-        # Radio buttons for "Nested" and "Flat" options
-        self.flat_rb = ttk.Radiobutton(self.folder_structure_frame, text="Flat Folder (Destination/YYYY-MM/File)",
-                                       variable=self.folder_structure_var, value="flat")
-        self.flat_rb.grid(row=0, column=0, sticky='w')
-
-        self.nested_rb = ttk.Radiobutton(self.folder_structure_frame, text="Nested Folder (Destination/YYYY/MM/File)",
-                                         variable=self.folder_structure_var, value="nested")
-        self.nested_rb.grid(row=0, column=1, sticky='w')
-
-        # Add a checkbox to control whether thumbnails should be displayed
-        self.display_thumbnail_var = tk.BooleanVar(value=True)  # Default is True (display thumbnails)
-        self.thumbnail_cb = ttk.Checkbutton(main, text="Display Thumbnails", variable=self.display_thumbnail_var)
-        self.thumbnail_cb.grid(row=4, column=2, sticky='w', padx=10, pady=10)
-
-        # Dropdowns for Source and Destination
-        self.source_label = ttk.Label(main, text="Source Folder")
-        self.source_label.grid(row=0, column=0, padx=10, pady=10)
-        self.source_button = ttk.Button(main, text="Browse", command=self.browse_source)
-        self.source_button.grid(row=0, column=1, padx=10, pady=10)
+    def setup_gui(self):
+        # Source Folder
+        ttk.Label(self.root, text="Source Folder:").grid(row=0, column=0, padx=10, pady=5, sticky='w')
         self.source_var = tk.StringVar()
-        self.source_entry = ttk.Entry(main, textvariable=self.source_var, width=50)
-        self.source_entry.grid(row=0, column=2, padx=10, pady=10)
+        ttk.Entry(self.root, textvariable=self.source_var, width=50).grid(row=0, column=1, padx=10, pady=5)
+        ttk.Button(self.root, text="Browse", command=self.browse_source).grid(row=0, column=2, padx=10, pady=5)
 
-        self.destination_label = ttk.Label(main, text="Destination Folder")
-        self.destination_label.grid(row=1, column=0, padx=10, pady=10)
-        self.destination_button = ttk.Button(main, text="Browse", command=self.browse_destination)
-        self.destination_button.grid(row=1, column=1, padx=10, pady=10)
+        # Destination Folder
+        ttk.Label(self.root, text="Destination Folder:").grid(row=1, column=0, padx=10, pady=5, sticky='w')
         self.destination_var = tk.StringVar()
-        self.destination_entry = ttk.Entry(main, textvariable=self.destination_var, width=50)
-        self.destination_entry.grid(row=1, column=2, padx=10, pady=10)
+        ttk.Entry(self.root, textvariable=self.destination_var, width=50).grid(row=1, column=1, padx=10, pady=5)
+        ttk.Button(self.root, text="Browse", command=self.browse_destination).grid(row=1, column=2, padx=10, pady=5)
 
-        # Checkboxes for image extensions
-        self.extension_frame = ttk.LabelFrame(main, text="File Extensions")
-        self.extension_frame.grid(row=0, column=3, rowspan=4, padx=10, pady=10, sticky='n')
+        # Folder Structure Options
+        folder_frame = ttk.LabelFrame(self.root, text="Folder Structure")
+        folder_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=5, sticky='w')
+        self.folder_structure_var = tk.StringVar(value="flat")
+        ttk.Radiobutton(folder_frame, text="Flat (YYYY-MM)", variable=self.folder_structure_var, value="flat").grid(row=0, column=0, padx=5, pady=5)
+        ttk.Radiobutton(folder_frame, text="Nested (YYYY/MM)", variable=self.folder_structure_var, value="nested").grid(row=0, column=1, padx=5, pady=5)
 
+        # File Extensions
+        ext_frame = ttk.LabelFrame(self.root, text="File Extensions")
+        ext_frame.grid(row=0, column=3, rowspan=3, padx=10, pady=5, sticky='ns')
         self.extensions = {
-            "JPEG": tk.BooleanVar(),
-            "JPG": tk.BooleanVar(),
-            "PNG": tk.BooleanVar(),
+            "JPEG": tk.BooleanVar(value=True),
+            "JPG": tk.BooleanVar(value=True),
+            "PNG": tk.BooleanVar(value=True),
             "GIF": tk.BooleanVar(),
             "BMP": tk.BooleanVar(),
             "TIFF": tk.BooleanVar(),
@@ -68,35 +58,29 @@ class ImageSorterGUI:
             "NEF": tk.BooleanVar(),
             "ORF": tk.BooleanVar()
         }
+        for idx, (ext, var) in enumerate(self.extensions.items()):
+            ttk.Checkbutton(ext_frame, text=ext, variable=var).grid(row=idx, column=0, sticky='w')
 
-        row = 0
-        for ext, var in self.extensions.items():
-            cb = ttk.Checkbutton(self.extension_frame, text=ext, variable=var)
-            cb.grid(row=row, column=0, sticky='w')
-            row += 1
-
-        # Custom extensions entry
+        # Custom Extensions
+        ttk.Label(ext_frame, text="Custom Extensions (space-separated):").grid(row=len(self.extensions), column=0, padx=5, pady=(10, 0), sticky='w')
         self.custom_ext_var = tk.StringVar()
-        self.custom_ext_cb = ttk.Checkbutton(self.extension_frame, text="Custom Extensions",
-                                             variable=tk.BooleanVar())
-        self.custom_ext_cb.grid(row=row, column=0, sticky='w')
-        self.custom_ext_entry = ttk.Entry(self.extension_frame, textvariable=self.custom_ext_var, width=20)
-        self.custom_ext_entry.grid(row=row + 1, column=0, padx=10, pady=10)
+        ttk.Entry(ext_frame, textvariable=self.custom_ext_var, width=20).grid(row=len(self.extensions)+1, column=0, padx=5, pady=5)
 
-        # Text box for output
-        self.output_text = tk.Text(main, height=10, width=80)
-        self.output_text.grid(row=5, column=0, columnspan=4, padx=10, pady=10)
-
-        # Start button and Check Duplicates checkbox
+        # Options
+        options_frame = ttk.Frame(self.root)
+        options_frame.grid(row=3, column=0, columnspan=4, padx=10, pady=5, sticky='w')
         self.check_duplicates_var = tk.BooleanVar()
-        self.check_duplicates_cb = ttk.Checkbutton(main, text="Check Duplicates", variable=self.check_duplicates_var)
-        self.check_duplicates_cb.grid(row=4, column=1, sticky='w', padx=10, pady=10)
+        ttk.Checkbutton(options_frame, text="Check Duplicates", variable=self.check_duplicates_var).grid(row=0, column=0, padx=5, pady=5)
+        self.display_thumbnail_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(options_frame, text="Display Thumbnails", variable=self.display_thumbnail_var).grid(row=0, column=1, padx=5, pady=5)
 
-        self.start_button = ttk.Button(main, text="START", command=self.start_scrape)
-        self.start_button.grid(row=4, column=0, padx=10, pady=10, sticky='e')
+        # Start Button
+        self.start_button = ttk.Button(self.root, text="START", command=self.start_processing)
+        self.start_button.grid(row=4, column=0, padx=10, pady=10, sticky='w')
 
-        # Initialize the cancel flag
-        self.cancel_requested = False  # Flag to stop processing
+        # Output Text Box
+        self.output_text = tk.Text(self.root, height=10, width=80, state='disabled')
+        self.output_text.grid(row=5, column=0, columnspan=4, padx=10, pady=10)
 
     def browse_source(self):
         folder = filedialog.askdirectory()
@@ -108,10 +92,17 @@ class ImageSorterGUI:
         if folder:
             self.destination_var.set(folder)
 
+    def log_output(self, message):
+        """Logs messages to the main output text box."""
+        self.output_text.config(state='normal')
+        self.output_text.insert(tk.END, message + '\n')
+        self.output_text.see(tk.END)
+        self.output_text.config(state='disabled')
+
     def validate_paths(self):
+        """Validates that the source and destination paths are valid directories."""
         source = self.source_var.get()
         destination = self.destination_var.get()
-
         if not os.path.isdir(source):
             messagebox.showerror("Error", "The source folder does not exist.")
             return False
@@ -120,237 +111,283 @@ class ImageSorterGUI:
             return False
         return True
 
-    def start_scrape(self):
+    def start_processing(self):
+        """Starts the file processing."""
         if not self.validate_paths():
             return
 
-        self.start_button.config(text="Running", state="disabled")
-        self.output_text.insert(tk.END, f"Process started at {datetime.now().strftime('%m-%d-%Y - %H:%M:%S')}\n")
-        self.output_text.see(tk.END)  # Autoscroll
+        self.start_button.config(text="Running...", state="disabled")
+        self.cancel_requested = False
 
+        # Get selected extensions
         self.selected_extensions = [ext.lower() for ext, var in self.extensions.items() if var.get()]
         custom_extensions = self.custom_ext_var.get().split()
-
         if custom_extensions:
             self.selected_extensions.extend([ext.lower() for ext in custom_extensions])
 
+        if not self.selected_extensions:
+            messagebox.showerror("Error", "Please select at least one file extension.")
+            self.start_button.config(text="START", state="normal")
+            return
+
         self.check_duplicates = self.check_duplicates_var.get()
 
-        # Open separate output window
-        self.output_window = Toplevel(self.root)
-        self.output_window.title("Process Window")
-        self.output_window.protocol("WM_DELETE_WINDOW", self.on_output_window_close)
+        # Open processing window
+        self.open_process_window()
 
-        # Text box for logging
-        self.output_box = tk.Text(self.output_window, height=20, width=80)
-        self.output_box.grid(row=0, column=0, padx=10, pady=10)
+        # Start processing after UI updates
+        self.root.after(100, self.process_files)
 
-        # Label for displaying the current thumbnail
-        self.thumbnail_label = tk.Label(self.output_window)
-        self.thumbnail_label.grid(row=0, column=1, padx=10, pady=10)
+    def open_process_window(self):
+        """Opens a new window to display processing progress."""
+        self.process_window = Toplevel(self.root)
+        self.process_window.title("Processing")
+        self.process_window.resizable(False, False)
+        self.process_window.protocol("WM_DELETE_WINDOW", self.request_cancel)
 
-        # Label for displaying current/total
-        self.progress_label = tk.Label(self.output_window, text="0/0")
-        self.progress_label.grid(row=1, column=1, padx=10, pady=5)
+        # Output Box
+        self.process_output = tk.Text(self.process_window, height=20, width=80, state='disabled')
+        self.process_output.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
 
-        # Progress bar
-        self.progress_bar = ttk.Progressbar(self.output_window, orient="horizontal", length=200, mode="determinate")
-        self.progress_bar.grid(row=2, column=1, padx=10, pady=5)
+        # Thumbnail
+        self.thumbnail_label = tk.Label(self.process_window)
+        self.thumbnail_label.grid(row=0, column=2, padx=10, pady=10)
 
-        self.cancel_button = ttk.Button(self.output_window, text="Cancel", command=self.stop_processing)
-        self.cancel_button.grid(row=3, column=1, padx=10, pady=10, sticky='e')
+        # Progress Bar
+        self.progress_var = tk.DoubleVar()
+        self.progress_bar = ttk.Progressbar(self.process_window, orient="horizontal", length=400, variable=self.progress_var, maximum=100)
+        self.progress_bar.grid(row=2, column=0, columnspan=2, padx=10, pady=5)
 
-        self.cancel_requested = False  # Reset the cancel flag
+        # Progress Label
+        self.progress_label = ttk.Label(self.process_window, text="0%")
+        self.progress_label.grid(row=2, column=2, padx=10, pady=5)
 
-        # Schedule the hashing process to start after the UI has had time to update
-        self.output_window.after(100, self.process_files)
+        # Status Label
+        self.status_label = ttk.Label(self.process_window, text="Initializing...")
+        self.status_label.grid(row=1, column=0, columnspan=3, padx=10, pady=5)
 
-    def stop_processing(self):
+        # Cancel Button
+        ttk.Button(self.process_window, text="Cancel", command=self.request_cancel).grid(row=3, column=2, padx=10, pady=10)
+
+    def log_process_output(self, message):
+        """Logs messages to the processing window's output box."""
+        self.process_output.config(state='normal')
+        self.process_output.insert(tk.END, message + '\n')
+        self.process_output.see(tk.END)
+        self.process_output.config(state='disabled')
+
+    def request_cancel(self):
+        """Sets the flag to cancel processing."""
         self.cancel_requested = True
-        self.output_text.insert(tk.END, "Cancelling process...\n")
-        self.output_text.see(tk.END)  # Autoscroll
-
-    def create_hash_map(self):
-        destination = self.destination_var.get()
-        hash_map = {}
-
-        self.output_box.insert(tk.END, "Hashing files...\n")
-        self.output_box.see(tk.END)  # Autoscroll
-        self.output_window.update()  # Ensure the window updates before starting the hash process
-
-        for root, dirs, files in os.walk(destination):
-            for file in files:
-                ext = file.split('.')[-1].lower()
-                if ext in self.selected_extensions:  # Only hash files with selected extensions
-                    dest_path = os.path.join(root, file)
-                    file_hash = self.get_file_hash(dest_path)
-                    hash_map[file_hash] = dest_path
-
-        self.output_box.insert(tk.END, "Hashing complete.\n")
-        self.output_box.see(tk.END)  # Autoscroll
-
-        return hash_map
+        self.log_output("Cancelling process...")
 
     def process_files(self):
-        if self.check_duplicates:
-            self.hash_map = self.create_hash_map()
-
+        """Processes the files based on user inputs."""
         source = self.source_var.get()
         destination = self.destination_var.get()
+
+        # Gather all files to process
+        files_to_process = []
+        for root_dir, _, files in os.walk(source):
+            for file in files:
+                ext = os.path.splitext(file)[1][1:].lower()
+                if ext in self.selected_extensions:
+                    files_to_process.append(os.path.join(root_dir, file))
+
+        total_files = len(files_to_process)
+        if total_files == 0:
+            messagebox.showinfo("Info", "No files found with the selected extensions.")
+            self.start_button.config(text="START", state="normal")
+            self.process_window.destroy()
+            return
+
         processed_files = 0
         duplicate_files = 0
         error_files = 0
-        list_errors = []
-        list_duplicates = []
-        total_files = sum([len([file for file in files if file.split('.')[-1].lower() in self.selected_extensions])
-                           for r, d, files in os.walk(source)])
+        duplicate_list = []  # List to keep track of duplicates
 
-        self.output_text.insert(tk.END, f"Total files to process: {total_files}\n")
-        self.output_text.see(tk.END)  # Autoscroll
+        # Hash existing files if checking for duplicates
+        if self.check_duplicates:
+            self.create_hash_map(destination)
+        else:
+            self.hash_map = {}
 
-        current_file = 0  # Track the current file being processed
+        # Reset progress bar for processing files
+        self.progress_var.set(0)
+        self.progress_bar['maximum'] = total_files
+        self.status_label.config(text="Processing files...")
 
-        for root, dirs, files in os.walk(source):
+        for idx, file_path in enumerate(files_to_process, 1):
             if self.cancel_requested:
-                break  # Stop processing if cancel is clicked
+                self.log_output("Process cancelled by user.")
+                break
 
+            try:
+                is_duplicate = False
+                if self.check_duplicates:
+                    duplicate_path = self.is_duplicate(file_path)
+                    if duplicate_path:
+                        duplicate_files += 1
+                        is_duplicate = True
+                        duplicate_info = f"Duplicate skipped: {file_path}\nOriginal file: {duplicate_path}"
+                        duplicate_list.append(duplicate_info)
+                        self.log_process_output(duplicate_info)
+
+                if not is_duplicate:
+                    # Determine destination path
+                    date_taken = self.get_date_taken(file_path)
+                    if self.folder_structure_var.get() == "nested":
+                        dest_folder = os.path.join(destination, date_taken.strftime('%Y'), date_taken.strftime('%m'))
+                    else:
+                        dest_folder = os.path.join(destination, date_taken.strftime('%Y-%m'))
+
+                    if not os.path.exists(dest_folder):
+                        os.makedirs(dest_folder)
+
+                    base_name = date_taken.strftime('%Y-%m-%d')
+                    ext = os.path.splitext(file_path)[1].lower()
+                    dest_file = os.path.join(dest_folder, base_name + ext)
+
+                    # Handle file name conflicts
+                    counter = 1
+                    while os.path.exists(dest_file):
+                        dest_file = os.path.join(dest_folder, f"{base_name}({counter}){ext}")
+                        counter += 1
+
+                    # Copy file
+                    shutil.copy2(file_path, dest_file)
+                    processed_files += 1
+                    self.log_process_output(f"Copied: {file_path} -> {dest_file}")
+
+                    # Display thumbnail
+                    if self.display_thumbnail_var.get():
+                        self.display_thumbnail(file_path)
+
+            except Exception as e:
+                error_files += 1
+                self.log_process_output(f"Error processing {file_path}: {e}")
+
+            # Update progress
+            self.progress_var.set(idx)
+            progress_percent = (idx / total_files) * 100
+            self.progress_label.config(text=f"{int(progress_percent)}%")
+            self.process_window.update()
+
+        # Finalize
+        self.finish_processing(processed_files, total_files, duplicate_files, error_files, duplicate_list)
+
+    def create_hash_map(self, directory):
+        """Creates a hash map of existing files in the destination to check for duplicates."""
+        self.log_process_output("Creating hash map of existing files...")
+        self.status_label.config(text="Hashing existing files...")
+        self.process_window.update()
+
+        # Gather all files to hash
+        files_to_hash = []
+        for root_dir, _, files in os.walk(directory):
             for file in files:
-                if self.cancel_requested:
-                    self.output_text.insert(tk.END, "Process cancelled by user.\n")
-                    self.output_text.see(tk.END)  # Autoscroll
-                    self.finish_process(processed_files, total_files, duplicate_files, list_duplicates,
-                                        error_files, list_errors)
-                    self.output_window.destroy()
-                    return
-
-                ext = file.split('.')[-1].lower()
+                ext = os.path.splitext(file)[1][1:].lower()
                 if ext in self.selected_extensions:
-                    current_file += 1  # Increment the current file count
-                    src_path = os.path.join(root, file)
-                    try:
-                        date_taken = self.get_date_taken(src_path)
-                        if not date_taken:
-                            date_taken = datetime.fromtimestamp(os.path.getmtime(src_path))
+                    files_to_hash.append(os.path.join(root_dir, file))
 
-                        year = date_taken.strftime('%Y')
-                        month = date_taken.strftime('%m')
-                        dest_folder = os.path.join(destination, year, month)
+        total_hash_files = len(files_to_hash)
+        if total_hash_files == 0:
+            self.log_process_output("No existing files to hash.")
+            return
 
-                        # Check the value of self.folder_structure_var to determine which folder structure to use
-                        if self.folder_structure_var.get() == "nested":
-                            dest_folder = os.path.join(destination, year, month)  # Nested folder (Destination/Year/Month)
-                        elif self.folder_structure_var.get() == "flat":
-                            dest_folder = os.path.join(destination, f"{year}-{month}")  # Flat folder (Destination/Year-Month)
+        self.progress_var.set(0)
+        self.progress_bar['maximum'] = total_hash_files
 
-                        # Create the destination folder if it does not exist
-                        if not os.path.exists(dest_folder):
-                            os.makedirs(dest_folder)
+        self.hash_map = {}
+        for idx, file_path in enumerate(files_to_hash, 1):
+            if self.cancel_requested:
+                self.log_output("Hashing cancelled by user.")
+                break
 
-                        file_base_name = date_taken.strftime('%Y-%m-%d')
-                        dest_path = os.path.join(dest_folder, f"{file_base_name}(1).{ext}")
-                        dest_path = os.path.normpath(dest_path)
+            file_hash = self.compute_file_hash(file_path)
+            self.hash_map[file_hash] = file_path
 
-                        index = 1
-                        while os.path.exists(dest_path):
-                            index += 1
-                            dest_path = os.path.join(dest_folder, f"{file_base_name}({index}).{ext}")
+            # Update progress
+            self.progress_var.set(idx)
+            progress_percent = (idx / total_hash_files) * 100
+            self.progress_label.config(text=f"{int(progress_percent)}%")
+            self.status_label.config(text=f"Hashing existing files... {int(progress_percent)}%")
+            self.process_window.update()
 
-                        if self.check_duplicates:
-                            duplicate_path = self.is_duplicate(src_path)
-                            if duplicate_path:
-                                duplicate_files += 1
-                                list_duplicates.append(f"{src_path} > {duplicate_path} : DUPLICATE")
-                                self.output_box.insert(tk.END,
-                                                       f"{src_path} > {duplicate_path} : DUPLICATE\n")
-                                self.output_box.see(tk.END)  # Autoscroll
-                                continue
+        self.log_process_output("Hash map creation complete.")
+        self.status_label.config(text="Hashing complete.")
+        self.progress_var.set(0)
+        self.progress_bar['maximum'] = 100
+        self.progress_label.config(text="0%")
 
-                        self.copy_file(src_path, dest_path)
-                        processed_files += 1
-                        self.output_box.insert(tk.END, f"Copied: {src_path}\n|___{dest_path}\n")
-                        self.output_box.see(tk.END)  # Autoscroll
-                        if self.display_thumbnail_var.get():
-                            self.display_thumbnail(src_path)
-                        else:
-                            self.output_box.insert(tk.END, "Thumbnail display is disabled.\n")
+    def compute_file_hash(self, file_path):
+        """Computes the MD5 hash of a file."""
+        hash_md5 = hashlib.md5()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):  # Read in 8KB chunks
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
 
-                        self.progress_label.config(text=f"{current_file}/{total_files}")  # Update progress
-                        self.progress_bar["value"] = (current_file / total_files) * 100  # Update progress bar
-                        self.output_window.update()  # Update the window to show the thumbnail
-                    except Exception as e:
-                        error_files += 1
-                        list_errors.append(f"{src_path} > FAILED with error {str(e)}")
-                        self.output_box.insert(tk.END, f"{src_path} > FAILED with error {str(e)}\n")
-                        self.output_box.see(tk.END)  # Autoscroll
+    def is_duplicate(self, file_path):
+        """Checks if a file is a duplicate based on its hash."""
+        file_hash = self.compute_file_hash(file_path)
+        return self.hash_map.get(file_hash)
 
-        self.finish_process(processed_files, total_files, duplicate_files, list_duplicates, error_files, list_errors)
-
-    def finish_process(self, processed_files, total_files, duplicate_files, list_duplicates, error_files, list_errors):
-        self.output_text.see(tk.END)  # Autoscroll
-        if self.check_duplicates:
-            self.output_text.insert(tk.END, "\n".join(list_duplicates) + "\n")
-            self.output_text.see(tk.END)  # Autoscroll
-        if list_errors:
-            self.output_text.insert(tk.END, "\n".join(list_errors) + "\n")
-            self.output_text.see(tk.END)  # Autoscroll
-        self.output_text.insert(tk.END, f"Successfully imported {processed_files}/{total_files} files.\n")
-        if self.check_duplicates:
-            self.output_text.insert(tk.END, f"{duplicate_files} duplicates skipped.\n")
-        if list_errors:
-            self.output_text.insert(tk.END, f"{error_files} files failed to import.\n")
-        self.output_box.insert(tk.END, "Processing complete!\n")
-        self.output_box.see(tk.END)  # Autoscroll
-        self.start_button.config(text="START", state="normal")
-        if not list_errors:
-            self.output_window.destroy()
-        self.output_text.see(tk.END)  # Autoscroll
-
-    def get_date_taken(self, path):
+    def get_date_taken(self, file_path):
+        """Extracts the date taken from EXIF data or falls back to file's modified date."""
         try:
-            with open(path, 'rb') as image_file:
-                tags = exifread.process_file(image_file)
-                # EXIF tags may contain 'EXIF DateTimeOriginal' or similar for the date
-                date_taken_tag = tags.get('EXIF DateTimeOriginal', None) or tags.get('Image DateTime', None)
-                if date_taken_tag:
-                    return datetime.strptime(str(date_taken_tag), '%Y:%m:%d %H:%M:%S')
+            with open(file_path, 'rb') as f:
+                tags = exifread.process_file(f, stop_tag="EXIF DateTimeOriginal")
+                date_taken = tags.get("EXIF DateTimeOriginal")
+                if date_taken:
+                    return datetime.strptime(str(date_taken), '%Y:%m:%d %H:%M:%S')
         except Exception as e:
-            self.output_box.insert(tk.END, f"Error getting date taken for {path}: {e}\n")
-            self.output_box.insert(tk.END, f"|__Defaulting to Modified Date\n")
+            self.log_process_output(f"Error reading EXIF data for {file_path}: {e}")
+        # Fallback to last modified date
+        return datetime.fromtimestamp(os.path.getmtime(file_path))
 
-        # Fallback to the file's modified date if no EXIF date is found
-        return datetime.fromtimestamp(os.path.getmtime(path))
-
-    def is_duplicate(self, src_path):
-        src_hash = self.get_file_hash(src_path)
-        return self.hash_map.get(src_hash)
-
-    def get_file_hash(self, path):
-        hasher = hashlib.md5()
-        with open(path, 'rb') as afile:
-            buf = afile.read()
-            hasher.update(buf)
-        return hasher.hexdigest()
-
-    def copy_file(self, src, dest):
-        with open(src, 'rb') as fsrc:
-            with open(dest, 'wb') as fdest:
-                fdest.write(fsrc.read())
-
-    def display_thumbnail(self, image_path):
+    def display_thumbnail(self, file_path):
+        """Displays a thumbnail of the current image."""
         try:
-            image = Image.open(image_path)
-            image.thumbnail((200, 200))  # Create a thumbnail
+            image = Image.open(file_path)
+            image.thumbnail((200, 200))
             photo = ImageTk.PhotoImage(image)
             self.thumbnail_label.config(image=photo)
-            self.thumbnail_label.image = photo  # Keep a reference to avoid garbage collection
+            self.thumbnail_label.image = photo
         except Exception as e:
-            self.output_box.insert(tk.END, f"Error displaying thumbnail for {image_path}: {e}\n")
+            self.log_process_output(f"Error displaying thumbnail for {file_path}: {e}")
 
-    def on_output_window_close(self):
-        self.cancel_requested = True
+    def finish_processing(self, processed_files, total_files, duplicate_files, error_files, duplicate_list):
+        """Handles the completion of the file processing."""
+        self.log_output(f"Processing complete: {processed_files}/{total_files} files copied.")
+        if self.check_duplicates and duplicate_files > 0:
+            self.log_output(f"Duplicates skipped: {duplicate_files}")
+            self.show_duplicate_window(duplicate_list)
+        if error_files > 0:
+            self.log_output(f"Errors occurred: {error_files} files failed to process.")
+        self.start_button.config(text="START", state="normal")
+        self.process_window.destroy()
+
+    def show_duplicate_window(self, duplicate_list):
+        """Displays a new window with the list of duplicate files."""
+        duplicates_window = Toplevel(self.root)
+        duplicates_window.title("Duplicate Files Skipped")
+        duplicates_window.resizable(False, False)
+
+        # Text Box for duplicates
+        duplicates_text = tk.Text(duplicates_window, height=20, width=80)
+        duplicates_text.pack(padx=10, pady=10)
+
+        duplicates_text.insert(tk.END, "List of duplicate files skipped:\n\n")
+        for info in duplicate_list:
+            duplicates_text.insert(tk.END, info + "\n\n")
+        duplicates_text.config(state='disabled')
+
+        # Close Button
+        ttk.Button(duplicates_window, text="Close", command=duplicates_window.destroy).pack(pady=10)
 
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = ImageSorterGUI(root)
+    app = ChronoSortGUI(root)
     root.mainloop()
