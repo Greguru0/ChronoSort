@@ -8,12 +8,33 @@ import hashlib
 from datetime import datetime
 from PIL import Image, ImageTk
 from PIL.ExifTags import TAGS
+import exifread  # Single library for handling EXIF data from all supported formats
+
 
 class ImageSorterGUI:
     def __init__(self, main):
         self.root = main
         self.root.title("ChronoSort")
 
+        # Add this in the __init__ method to create radio buttons for folder structure
+        self.folder_structure_frame = ttk.LabelFrame(main, text="Folder Structure")
+        self.folder_structure_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=10, sticky='w')
+
+        # Create a single variable to hold the value for the folder structure
+        self.folder_structure_var = tk.StringVar(value="flat")  # Default to "flat"
+
+        # Radio buttons for "Nested" and "Flat" options
+        self.flat_rb = ttk.Radiobutton(self.folder_structure_frame, text="Flat Folder (Destination/YYYY-MM/File)", variable=self.folder_structure_var, value="flat")
+        self.flat_rb.grid(row=0, column=0, sticky='w')
+        
+        self.nested_rb = ttk.Radiobutton(self.folder_structure_frame, text="Nested Folder (Destination/YYYY/MM/File)", variable=self.folder_structure_var, value="nested")
+        self.nested_rb.grid(row=0, column=1, sticky='w')
+
+        # Add a checkbox to control whether thumbnails should be displayed
+        self.display_thumbnail_var = tk.BooleanVar(value=True)  # Default is True (display thumbnails)
+        self.thumbnail_cb = ttk.Checkbutton(main, text="Display Thumbnails", variable=self.display_thumbnail_var)
+        self.thumbnail_cb.grid(row=4, column=2, sticky='w', padx=10, pady=10)
+        
         # Dropdowns for Source and Destination
         self.source_label = ttk.Label(main, text="Source Folder")
         self.source_label.grid(row=0, column=0, padx=10, pady=10)
@@ -73,7 +94,7 @@ class ImageSorterGUI:
 
         self.start_button = ttk.Button(main, text="START", command=self.start_scrape)
         self.start_button.grid(row=4, column=0, padx=10, pady=10, sticky='e')
-
+            
     def browse_source(self):
         folder = filedialog.askdirectory()
         if folder:
@@ -198,10 +219,23 @@ class ImageSorterGUI:
                         year = date_taken.strftime('%Y')
                         month = date_taken.strftime('%m')
                         dest_folder = os.path.join(destination, year, month)
-                        os.makedirs(dest_folder, exist_ok=True)
+                        
+                        # Check the value of self.folder_structure_var to determine which folder structure to use
+                        if self.folder_structure_var.get() == "nested":
+                            dest_folder = os.path.join(destination, year, month)  # Nested folder (Destination/Year/Month)
+                        elif self.folder_structure_var.get() == "flat":
+                            dest_folder = os.path.join(destination, f"{year}-{month}")  # Flat folder (Destination/Year-Month)
+                        else:
+                            print("Something went wrong.")
+                            exitapp
+
+                        # Create the destination folder if it does not exist
+                        if not os.path.exists(dest_folder):
+                            os.makedirs(dest_folder)  # This will create the directory, including any intermediate directories
 
                         file_base_name = date_taken.strftime('%Y-%m-%d')
                         dest_path = os.path.join(dest_folder, f"{file_base_name}(1).{ext}")
+                        dest_path = os.path.normpath(dest_path)
 
                         index = 1
                         while os.path.exists(dest_path):
@@ -221,48 +255,58 @@ class ImageSorterGUI:
                         processed_files += 1
                         self.output_box.insert(tk.END, f"Copied: {src_path}\n|___{dest_path}\n")
                         self.output_box.see(tk.END)  # Autoscroll
-                        self.display_thumbnail(src_path)
+                        if self.display_thumbnail_var.get():
+                            self.display_thumbnail(src_path)
+                        else:
+                            self.output_box.insert(tk.END, "Thumbnail display is disabled.\n")
+
                         self.progress_label.config(text=f"{current_file}/{total_files}")  # Update progress
                         self.progress_bar["value"] = (current_file / total_files) * 100  # Update progress bar
                         self.output_window.update()  # Update the window to show the thumbnail
                     except Exception as e:
                         error_files += 1
-                        list_errors.append(f"{src_path} > {dest_path} : FAILED")
-                        self.output_box.insert(tk.END, f"{src_path} > {dest_path} : FAILED\n")
+                        list_errors.append(f"{src_path} > {dest_path} : FAILED with error {str(e)}")
+                        self.output_box.insert(tk.END, f"{src_path} > {dest_path} : FAILED with error {str(e)}\n")
                         self.output_box.see(tk.END)  # Autoscroll
+
 
         self.finish_process(processed_files, total_files, duplicate_files, list_duplicates, error_files, list_errors)
 
     def finish_process(self, processed_files, total_files, duplicate_files, list_duplicates, error_files, list_errors):
-        self.output_text.insert(tk.END, f"Successfully imported {processed_files}/{total_files} files.\n")
         self.output_text.see(tk.END)  # Autoscroll
         if self.check_duplicates:
-            self.output_text.insert(tk.END, f"{duplicate_files} duplicates skipped.\n")
             self.output_text.insert(tk.END, "\n".join(list_duplicates) + "\n")
             self.output_text.see(tk.END)  # Autoscroll
         if list_errors:
-            self.output_text.insert(tk.END, f"{error_files} files failed to import.\n")
             self.output_text.insert(tk.END, "\n".join(list_errors) + "\n")
             self.output_text.see(tk.END)  # Autoscroll
-
+        self.output_text.insert(tk.END, f"Successfully imported {processed_files}/{total_files} files.\n")
+        if self.check_duplicates:
+            self.output_text.insert(tk.END, f"{duplicate_files} duplicates skipped.\n")
+        if list_errors:
+            self.output_text.insert(tk.END, f"{error_files} files failed to import.\n")
         self.output_box.insert(tk.END, "Processing complete!\n")
         self.output_box.see(tk.END)  # Autoscroll
         self.start_button.config(text="START", state="normal")
         if not list_errors:
             self.output_window.destroy()
-
+        self.output_text.see(tk.END)  # Autoscroll
+        
     def get_date_taken(self, path):
         try:
-            image = Image.open(path)
-            if hasattr(image, '_getexif') and image._getexif() is not None:
-                info = image._getexif()
-                for tag, value in info.items():
-                    if TAGS.get(tag, tag) == 'DateTimeOriginal':
-                        return datetime.strptime(value, '%Y:%m:%d %H:%M:%S')
+            with open(path, 'rb') as image_file:
+                tags = exifread.process_file(image_file)
+                # EXIF tags may contain 'EXIF DateTimeOriginal' or similar for the date
+                date_taken_tag = tags.get('EXIF DateTimeOriginal', None) or tags.get('Image DateTime', None)
+                if date_taken_tag:
+                    return datetime.strptime(str(date_taken_tag), '%Y:%m:%d %H:%M:%S')
         except Exception as e:
             self.output_box.insert(tk.END, f"Error getting date taken for {path}: {e}\n")
             self.output_box.insert(tk.END, f"|__Defaulting to Modified Date\n")
+        
+        # Fallback to the file's modified date if no EXIF date is found
         return datetime.fromtimestamp(os.path.getmtime(path))
+
 
     def is_duplicate(self, src_path):
         src_hash = self.get_file_hash(src_path)
@@ -289,7 +333,11 @@ class ImageSorterGUI:
             self.thumbnail_label.image = photo  # Keep a reference to avoid garbage collection
         except Exception as e:
             self.output_box.insert(tk.END, f"Error displaying thumbnail for {image_path}: {e}\n")
-
+        # Fake delay
+        import time  # Import time module for sleep functionality
+        time.sleep(2)
+    
+    
     def on_output_window_close(self):
         self.stop_processing = True
 
