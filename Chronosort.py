@@ -1,6 +1,3 @@
-# ChronoSort
-# This program will transfer files from a SOURCE folder to a DESTINATION folder and check for duplicates with hash values. Will handle renaming. Will rename files to their date taken/modified. Ideal for images, but can be used for any filetype.
-
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, Toplevel
 import os
@@ -24,17 +21,19 @@ class ImageSorterGUI:
         self.folder_structure_var = tk.StringVar(value="flat")  # Default to "flat"
 
         # Radio buttons for "Nested" and "Flat" options
-        self.flat_rb = ttk.Radiobutton(self.folder_structure_frame, text="Flat Folder (Destination/YYYY-MM/File)", variable=self.folder_structure_var, value="flat")
+        self.flat_rb = ttk.Radiobutton(self.folder_structure_frame, text="Flat Folder (Destination/YYYY-MM/File)",
+                                       variable=self.folder_structure_var, value="flat")
         self.flat_rb.grid(row=0, column=0, sticky='w')
-        
-        self.nested_rb = ttk.Radiobutton(self.folder_structure_frame, text="Nested Folder (Destination/YYYY/MM/File)", variable=self.folder_structure_var, value="nested")
+
+        self.nested_rb = ttk.Radiobutton(self.folder_structure_frame, text="Nested Folder (Destination/YYYY/MM/File)",
+                                         variable=self.folder_structure_var, value="nested")
         self.nested_rb.grid(row=0, column=1, sticky='w')
 
         # Add a checkbox to control whether thumbnails should be displayed
         self.display_thumbnail_var = tk.BooleanVar(value=True)  # Default is True (display thumbnails)
         self.thumbnail_cb = ttk.Checkbutton(main, text="Display Thumbnails", variable=self.display_thumbnail_var)
         self.thumbnail_cb.grid(row=4, column=2, sticky='w', padx=10, pady=10)
-        
+
         # Dropdowns for Source and Destination
         self.source_label = ttk.Label(main, text="Source Folder")
         self.source_label.grid(row=0, column=0, padx=10, pady=10)
@@ -78,7 +77,8 @@ class ImageSorterGUI:
 
         # Custom extensions entry
         self.custom_ext_var = tk.StringVar()
-        self.custom_ext_cb = ttk.Checkbutton(self.extension_frame, text="Custom Extensions", variable=tk.BooleanVar())
+        self.custom_ext_cb = ttk.Checkbutton(self.extension_frame, text="Custom Extensions",
+                                             variable=tk.BooleanVar())
         self.custom_ext_cb.grid(row=row, column=0, sticky='w')
         self.custom_ext_entry = ttk.Entry(self.extension_frame, textvariable=self.custom_ext_var, width=20)
         self.custom_ext_entry.grid(row=row + 1, column=0, padx=10, pady=10)
@@ -94,7 +94,10 @@ class ImageSorterGUI:
 
         self.start_button = ttk.Button(main, text="START", command=self.start_scrape)
         self.start_button.grid(row=4, column=0, padx=10, pady=10, sticky='e')
-            
+
+        # Initialize the cancel flag
+        self.cancel_requested = False  # Flag to stop processing
+
     def browse_source(self):
         folder = filedialog.askdirectory()
         if folder:
@@ -154,10 +157,18 @@ class ImageSorterGUI:
         self.progress_bar = ttk.Progressbar(self.output_window, orient="horizontal", length=200, mode="determinate")
         self.progress_bar.grid(row=2, column=1, padx=10, pady=5)
 
-        self.stop_processing = False  # Flag to stop processing
+        self.cancel_button = ttk.Button(self.output_window, text="Cancel", command=self.stop_processing)
+        self.cancel_button.grid(row=3, column=1, padx=10, pady=10, sticky='e')
+
+        self.cancel_requested = False  # Reset the cancel flag
 
         # Schedule the hashing process to start after the UI has had time to update
         self.output_window.after(100, self.process_files)
+
+    def stop_processing(self):
+        self.cancel_requested = True
+        self.output_text.insert(tk.END, "Cancelling process...\n")
+        self.output_text.see(tk.END)  # Autoscroll
 
     def create_hash_map(self):
         destination = self.destination_var.get()
@@ -191,7 +202,8 @@ class ImageSorterGUI:
         error_files = 0
         list_errors = []
         list_duplicates = []
-        total_files = sum([len([file for file in files if file.split('.')[-1].lower() in self.selected_extensions]) for r, d, files in os.walk(source)])
+        total_files = sum([len([file for file in files if file.split('.')[-1].lower() in self.selected_extensions])
+                           for r, d, files in os.walk(source)])
 
         self.output_text.insert(tk.END, f"Total files to process: {total_files}\n")
         self.output_text.see(tk.END)  # Autoscroll
@@ -199,11 +211,15 @@ class ImageSorterGUI:
         current_file = 0  # Track the current file being processed
 
         for root, dirs, files in os.walk(source):
+            if self.cancel_requested:
+                break  # Stop processing if cancel is clicked
+
             for file in files:
-                if self.stop_processing:
+                if self.cancel_requested:
                     self.output_text.insert(tk.END, "Process cancelled by user.\n")
                     self.output_text.see(tk.END)  # Autoscroll
-                    self.finish_process(processed_files, total_files, duplicate_files, list_duplicates)
+                    self.finish_process(processed_files, total_files, duplicate_files, list_duplicates,
+                                        error_files, list_errors)
                     self.output_window.destroy()
                     return
 
@@ -219,19 +235,16 @@ class ImageSorterGUI:
                         year = date_taken.strftime('%Y')
                         month = date_taken.strftime('%m')
                         dest_folder = os.path.join(destination, year, month)
-                        
+
                         # Check the value of self.folder_structure_var to determine which folder structure to use
                         if self.folder_structure_var.get() == "nested":
                             dest_folder = os.path.join(destination, year, month)  # Nested folder (Destination/Year/Month)
                         elif self.folder_structure_var.get() == "flat":
                             dest_folder = os.path.join(destination, f"{year}-{month}")  # Flat folder (Destination/Year-Month)
-                        else:
-                            print("Something went wrong.")
-                            exitapp
 
                         # Create the destination folder if it does not exist
                         if not os.path.exists(dest_folder):
-                            os.makedirs(dest_folder)  # This will create the directory, including any intermediate directories
+                            os.makedirs(dest_folder)
 
                         file_base_name = date_taken.strftime('%Y-%m-%d')
                         dest_path = os.path.join(dest_folder, f"{file_base_name}(1).{ext}")
@@ -247,7 +260,8 @@ class ImageSorterGUI:
                             if duplicate_path:
                                 duplicate_files += 1
                                 list_duplicates.append(f"{src_path} > {duplicate_path} : DUPLICATE")
-                                self.output_box.insert(tk.END, f"{src_path} > {duplicate_path} : DUPLICATE\n")
+                                self.output_box.insert(tk.END,
+                                                       f"{src_path} > {duplicate_path} : DUPLICATE\n")
                                 self.output_box.see(tk.END)  # Autoscroll
                                 continue
 
@@ -265,10 +279,9 @@ class ImageSorterGUI:
                         self.output_window.update()  # Update the window to show the thumbnail
                     except Exception as e:
                         error_files += 1
-                        list_errors.append(f"{src_path} > {dest_path} : FAILED with error {str(e)}")
-                        self.output_box.insert(tk.END, f"{src_path} > {dest_path} : FAILED with error {str(e)}\n")
+                        list_errors.append(f"{src_path} > FAILED with error {str(e)}")
+                        self.output_box.insert(tk.END, f"{src_path} > FAILED with error {str(e)}\n")
                         self.output_box.see(tk.END)  # Autoscroll
-
 
         self.finish_process(processed_files, total_files, duplicate_files, list_duplicates, error_files, list_errors)
 
@@ -291,7 +304,7 @@ class ImageSorterGUI:
         if not list_errors:
             self.output_window.destroy()
         self.output_text.see(tk.END)  # Autoscroll
-        
+
     def get_date_taken(self, path):
         try:
             with open(path, 'rb') as image_file:
@@ -303,10 +316,9 @@ class ImageSorterGUI:
         except Exception as e:
             self.output_box.insert(tk.END, f"Error getting date taken for {path}: {e}\n")
             self.output_box.insert(tk.END, f"|__Defaulting to Modified Date\n")
-        
+
         # Fallback to the file's modified date if no EXIF date is found
         return datetime.fromtimestamp(os.path.getmtime(path))
-
 
     def is_duplicate(self, src_path):
         src_hash = self.get_file_hash(src_path)
@@ -333,13 +345,10 @@ class ImageSorterGUI:
             self.thumbnail_label.image = photo  # Keep a reference to avoid garbage collection
         except Exception as e:
             self.output_box.insert(tk.END, f"Error displaying thumbnail for {image_path}: {e}\n")
-        # Fake delay
-        import time  # Import time module for sleep functionality
-        time.sleep(2)
-    
-    
+
     def on_output_window_close(self):
-        self.stop_processing = True
+        self.cancel_requested = True
+
 
 if __name__ == "__main__":
     root = tk.Tk()
