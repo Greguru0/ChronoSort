@@ -5,6 +5,7 @@ import shutil
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from datetime import datetime
+import re  # Make sure to import the 're' module at the top of your script
 
 # External libraries
 try:
@@ -38,10 +39,12 @@ class ChronoSortGUI:
         self.cancel_requested = False
         self.selected_extensions = []
         self.hash_map = {}
+        self.folder_max_numbers = {}  # Add this line to initialize the dictionary
         self.processing_thread = None
 
         # Set up the GUI components
         self.setup_gui()
+
 
     def setup_gui(self):
         # Main Frame
@@ -104,12 +107,15 @@ class ChronoSortGUI:
         # Options
         options_frame = ttkb.Frame(main_frame)
         options_frame.pack(fill=X, pady=5)
+        
         self.check_duplicates_var = tk.BooleanVar()
-        ttkb.Checkbutton(options_frame, text="Check Duplicates", variable=self.check_duplicates_var).pack(side=LEFT,
-                                                                                                         padx=5)
-        self.display_thumbnail_var = tk.BooleanVar(value=True)
-        ttkb.Checkbutton(options_frame, text="Display Thumbnails", variable=self.display_thumbnail_var).pack(side=LEFT,
-                                                                                                             padx=5)
+        ttkb.Checkbutton(options_frame, text="Check Duplicates", variable=self.check_duplicates_var).pack(side=LEFT, padx=5)
+        
+        self.display_thumbnail_var = tk.BooleanVar()
+        ttkb.Checkbutton(options_frame, text="Display Thumbnails", variable=self.display_thumbnail_var).pack(side=LEFT, padx=5)
+        
+        self.rename_existing_var = tk.BooleanVar()
+        ttkb.Checkbutton(options_frame, text="Rename existing photos in destination", variable=self.rename_existing_var).pack(side=LEFT, padx=5)
 
         # Start Button
         self.start_button = ttkb.Button(main_frame, text="START", command=self.start_processing, bootstyle=SUCCESS)
@@ -156,6 +162,9 @@ class ChronoSortGUI:
         self.start_button.config(text="Running...", state="disabled")
         self.cancel_requested = False
 
+        # Reset folder max numbers cache
+        self.folder_max_numbers = {}
+
         # Get selected extensions
         self.selected_extensions = [ext.lower() for ext, var in self.extensions.items() if var.get()]
         custom_extensions = self.custom_ext_var.get().split()
@@ -168,6 +177,7 @@ class ChronoSortGUI:
             return
 
         self.check_duplicates = self.check_duplicates_var.get()
+        self.rename_existing = self.rename_existing_var.get()  # Retrieve the value
 
         # Open processing window
         self.open_process_window()
@@ -175,6 +185,99 @@ class ChronoSortGUI:
         # Start processing in a new thread
         self.processing_thread = threading.Thread(target=self.process_files)
         self.processing_thread.start()
+
+
+
+    def rename_existing_photos(self, destination):
+        """Renames existing photos in the destination folder (non-recursively) if they don't fit the naming scheme."""
+        self.log_process_output(f"Renaming existing photos in destination folder: {destination}")
+        self.status_label.config(text="Renaming existing photos...")
+        self.process_window.update_idletasks()
+
+        # Initialize used_numbers set and max_existing_number
+        used_numbers = set()
+        max_existing_number = 0
+
+        # Lists to store files that match and don't match the naming scheme
+        files_to_rename = []
+        pattern = r'^(\d{4}-\d{2}-\d{2})\((\d+)\)(\.[^.]+)$'  # Adjusted to capture date, number, and extension
+
+        # First pass: collect used numbers and files to rename
+        files_in_destination = os.listdir(destination)
+        total_files = len(files_in_destination)
+        if total_files == 0:
+            self.log_process_output("No files found in the destination folder to rename.")
+            return
+
+        for file_name in files_in_destination:
+            file_path = os.path.join(destination, file_name)
+            if os.path.isfile(file_path):
+                ext = os.path.splitext(file_name)[1].lower()
+                if ext[1:] in self.selected_extensions:
+                    match = re.match(pattern, file_name)
+                    if match:
+                        # File matches naming scheme
+                        number = int(match.group(2))
+                        used_numbers.add(number)
+                        if number > max_existing_number:
+                            max_existing_number = number
+                        # No need to rename
+                        self.log_process_output(f"File already matches naming scheme: {file_name}")
+                    else:
+                        # File does not match naming scheme; collect for renaming
+                        date_taken = self.get_date_taken(file_path)
+                        files_to_rename.append((file_name, file_path, date_taken))
+        
+        # Sort files to rename by date taken
+        files_to_rename.sort(key=lambda x: x[2])
+
+        # Second pass: rename files that don't match the naming scheme
+        next_number = 1
+        for idx, (file_name, file_path, date_taken) in enumerate(files_to_rename, 1):
+            if self.cancel_requested:
+                self.log_output("Renaming cancelled by user.")
+                break
+
+            # Find the next available number not in used_numbers
+            while next_number in used_numbers:
+                next_number += 1
+
+            try:
+                base_name = date_taken.strftime('%Y-%m-%d')
+                ext = os.path.splitext(file_name)[1].lower()
+                new_file_name = f"{base_name}({next_number}){ext}"
+                new_file_path = os.path.join(destination, new_file_name)
+
+                # Rename the file
+                os.rename(file_path, new_file_path)
+                self.log_process_output(f"Renamed: {file_name} -> {new_file_name}")
+
+                # Update used_numbers and max_existing_number
+                used_numbers.add(next_number)
+                if next_number > max_existing_number:
+                    max_existing_number = next_number
+
+                next_number += 1
+
+            except Exception as e:
+                self.log_process_output(f"Error renaming {file_name}: {e}")
+
+            # Update progress
+            progress_percent = (idx / len(files_to_rename)) * 100
+            self.progress_var.set(progress_percent)
+            self.status_label.config(
+                text=f"Renaming existing photos... ({idx}/{len(files_to_rename)} - {int(progress_percent)}%)"
+            )
+            self.process_window.update_idletasks()
+
+        # Update the folder's max number after renaming
+        self.folder_max_numbers[destination] = max_existing_number
+
+        self.log_process_output("Renaming existing photos complete.")
+        self.status_label.config(text="Renaming complete.")
+        self.progress_var.set(0)
+
+
 
     def open_process_window(self):
         """Opens a new window to display processing progress."""
@@ -216,26 +319,99 @@ class ChronoSortGUI:
         self.cancel_requested = True
         self.log_output("Cancelling process...")
 
+    def initialize_folder_max_number(self, folder, ext):
+        """Initializes or updates the highest number already used in the destination folder."""
+        if folder not in self.folder_max_numbers:
+            # If the folder hasn't been processed yet, scan for the max number
+            used_numbers = set()
+            max_number = 0
+            pattern = r'^\d{4}-\d{2}-\d{2}\((\d+)\)' + re.escape(ext) + r'$'
+            if os.path.exists(folder):
+                for file_name in os.listdir(folder):
+                    if file_name.endswith(ext):
+                        match = re.match(pattern, file_name)
+                        if match:
+                            number = int(match.group(1))
+                            used_numbers.add(number)
+                            if number > max_number:
+                                max_number = number
+            self.folder_max_numbers[folder] = max_number
+        else:
+            max_number = self.folder_max_numbers[folder]
+
+        # Return the next available number
+        return max_number + 1
+
+
+
+
+
     def process_files(self):
         """Processes the files based on user inputs."""
         source = self.source_var.get()
         destination = self.destination_var.get()
 
+        # Reset folder max numbers cache at the beginning of processing
+        self.folder_max_numbers = {}
+
         try:
             # Gather all files to process
-            files_to_process = []
+            all_files = []
             for root_dir, _, files in os.walk(source):
                 for file in files:
                     ext = os.path.splitext(file)[1][1:].lower()
                     if ext in self.selected_extensions:
-                        files_to_process.append(os.path.join(root_dir, file))
+                        all_files.append(os.path.join(root_dir, file))
 
-            total_files = len(files_to_process)
+            total_files = len(all_files)
             if total_files == 0:
                 messagebox.showinfo("Info", "No files found with the selected extensions.")
                 self.start_button.config(text="START", state="normal")
                 self.process_window.destroy()
                 return
+
+            # Read EXIF data and gather files with dates
+            files_with_dates = []
+            self.status_label.config(text="Reading EXIF data...")
+            for idx, file_path in enumerate(all_files, 1):
+                date_taken = self.get_date_taken(file_path)
+                files_with_dates.append((file_path, date_taken))
+
+                # Update progress
+                progress_percent = (idx / total_files) * 100
+                self.progress_var.set(progress_percent)
+                self.status_label.config(
+                    text=f"Reading EXIF data... ({idx}/{total_files} - {int(progress_percent)}%)"
+                )
+                self.process_window.update_idletasks()
+
+            # Sort files by Date Taken
+            files_with_dates.sort(key=lambda x: x[1])
+
+            # Gather destination folders
+            dest_folders = set()
+            for file_path, date_taken in files_with_dates:
+                if self.folder_structure_var.get() == "nested":
+                    dest_folder = os.path.join(
+                        destination, date_taken.strftime('%Y'), date_taken.strftime('%m')
+                    )
+                else:
+                    dest_folder = os.path.join(destination, date_taken.strftime('%Y-%m'))
+                dest_folders.add(dest_folder)
+
+            # Create the folders if they do not exist
+            for dest_folder in dest_folders:
+                if not os.path.exists(dest_folder):
+                    os.makedirs(dest_folder)
+
+            # If renaming existing photos is requested
+            if self.rename_existing:
+                for dest_folder in dest_folders:
+                    self.rename_existing_photos(dest_folder)
+
+            # Reset progress bar for processing
+            self.progress_var.set(0)
+            self.status_label.config(text="Processing files...")
 
             processed_files = 0
             duplicate_files = 0
@@ -248,8 +424,7 @@ class ChronoSortGUI:
             else:
                 self.hash_map = {}
 
-            self.status_label.config(text="Processing files...")
-            for idx, file_path in enumerate(files_to_process, 1):
+            for idx, (file_path, date_taken) in enumerate(files_with_dates, 1):
                 if self.cancel_requested:
                     self.log_output("Process cancelled by user.")
                     break
@@ -267,51 +442,61 @@ class ChronoSortGUI:
 
                     if not is_duplicate:
                         # Determine destination path
-                        date_taken = self.get_date_taken(file_path)
                         if self.folder_structure_var.get() == "nested":
-                            dest_folder = os.path.join(destination, date_taken.strftime('%Y'), date_taken.strftime('%m'))
+                            dest_folder = os.path.join(
+                                destination, date_taken.strftime('%Y'), date_taken.strftime('%m')
+                            )
                         else:
                             dest_folder = os.path.join(destination, date_taken.strftime('%Y-%m'))
 
-                        if not os.path.exists(dest_folder):
-                            os.makedirs(dest_folder)
-
                         base_name = date_taken.strftime('%Y-%m-%d')
                         ext = os.path.splitext(file_path)[1].lower()
-                        dest_file = os.path.join(dest_folder, base_name + ext)
 
-                        # Handle file name conflicts
-                        counter = 1
-                        while os.path.exists(dest_file):
-                            dest_file = os.path.join(dest_folder, f"{base_name}({counter}){ext}")
-                            counter += 1
+                        # Initialize or retrieve the next available number for this folder
+                        next_number = self.initialize_folder_max_number(dest_folder, ext)
 
-                        # Copy file
+                        # Create the destination file path with the new sequential number
+                        dest_file = os.path.join(dest_folder, f"{base_name}({next_number}){ext}")
+
+                        # Copy the file to the destination
                         shutil.copy2(file_path, dest_file)
                         processed_files += 1
                         self.log_process_output(f"Copied: {file_path} -> {dest_file}")
 
-                        # Display thumbnail
+                        # Display thumbnail if enabled
                         if self.display_thumbnail_var.get():
                             self.display_thumbnail(file_path)
+
+                        # Update the folder's max number to reflect the newly added file
+                        self.folder_max_numbers[dest_folder] = next_number
+
+                    # Update progress
+                    progress_percent = (idx / total_files) * 100
+                    self.progress_var.set(progress_percent)
+                    self.status_label.config(
+                        text=f"Processing files... ({idx}/{total_files} - {int(progress_percent)}%)"
+                    )
+                    self.process_window.update_idletasks()
 
                 except Exception as e:
                     error_files += 1
                     self.log_process_output(f"Error processing {file_path}: {e}")
 
-                # Update progress
-                progress_percent = (idx / total_files) * 100
-                self.progress_var.set(progress_percent)
-                self.status_label.config(text=f"Processing files... {int(progress_percent)}%")
-                self.process_window.update_idletasks()
-
             # Finalize
-            self.finish_processing(processed_files, total_files, duplicate_files, error_files, duplicate_list)
+            self.finish_processing(
+                processed_files, total_files, duplicate_files, error_files, duplicate_list
+            )
 
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred during processing: {e}")
             self.start_button.config(text="START", state="normal")
             self.process_window.destroy()
+
+
+
+
+
+
 
     def create_hash_map(self, directory):
         """Creates a hash map of existing files in the destination to check for duplicates."""
@@ -344,12 +529,15 @@ class ChronoSortGUI:
             # Update progress
             progress_percent = (idx / total_hash_files) * 100
             self.progress_var.set(progress_percent)
-            self.status_label.config(text=f"Hashing existing files... {int(progress_percent)}%")
+            self.status_label.config(
+                text=f"Hashing existing files... ({idx}/{total_hash_files} - {int(progress_percent)}%)"
+            )
             self.process_window.update_idletasks()
 
         self.log_process_output("Hash map creation complete.")
         self.status_label.config(text="Hashing complete.")
         self.progress_var.set(0)
+
 
     @staticmethod
     def compute_file_hash(file_path):
@@ -372,11 +560,18 @@ class ChronoSortGUI:
                 tags = exifread.process_file(f, stop_tag="EXIF DateTimeOriginal")
                 date_taken = tags.get("EXIF DateTimeOriginal")
                 if date_taken:
-                    return datetime.strptime(str(date_taken), '%Y:%m:%d %H:%M:%S')
+                    # Handle potential variations in date format
+                    date_str = str(date_taken)
+                    for fmt in ('%Y:%m:%d %H:%M:%S', '%Y:%m:%d %H:%M:%S%z'):
+                        try:
+                            return datetime.strptime(date_str, fmt)
+                        except ValueError:
+                            continue
         except Exception as e:
             self.log_process_output(f"Error reading EXIF data for {file_path}: {e}")
         # Fallback to last modified date
         return datetime.fromtimestamp(os.path.getmtime(file_path))
+
 
     def display_thumbnail(self, file_path):
         """Displays a thumbnail of the current image."""
