@@ -5,7 +5,7 @@ import shutil
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from datetime import datetime
-import re  # Make sure to import the 're' module at the top of your script
+import re
 
 # External libraries
 try:
